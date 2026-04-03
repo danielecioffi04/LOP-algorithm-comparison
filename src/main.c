@@ -226,17 +226,17 @@ int main (int argc, char **argv)
     printf("Best known solution not available.\n");
   }
 
-  /* Append results to results.dat (write header if file is new) */
+  /* Append one row to results.dat (write header if file is new) */
   {
     FILE *dat;
     int writeHeader = 0;
-    dat = fopen("results.dat", "r");
+    dat = fopen("output/results.dat", "r");
     if (dat == NULL)
       writeHeader = 1;
     else
       fclose(dat);
 
-    dat = fopen("results.dat", "a");
+    dat = fopen("output/results.dat", "a");
     if (dat != NULL) {
       if (writeHeader)
         fprintf(dat, "instance pivoting neighborhood initial cost rpd time\n");
@@ -247,6 +247,22 @@ int main (int argc, char **argv)
               initialSolutionType + 2,
               cost, rpd, elapsed_time(VIRTUAL));
       fclose(dat);
+    }
+  }
+
+  /* Append cost to a per-algorithm file (e.g. lop-first-transpose-random.dat).
+     One cost value per line, used directly by the R analysis script. */
+  {
+    char algFileName[256];
+    FILE *algFile;
+    snprintf(algFileName, sizeof(algFileName), "output/lop-%s-%s-%s.dat",
+             pivotingRule + 2,
+             neighborhoodType + 2,
+             initialSolutionType + 2);
+    algFile = fopen(algFileName, "a");
+    if (algFile != NULL) {
+      fprintf(algFile, "%lld\n", cost);
+      fclose(algFile);
     }
   }
 
