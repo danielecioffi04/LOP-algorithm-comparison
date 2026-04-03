@@ -42,6 +42,58 @@ static int isTransposeMove(void (*move)(long int *, int, int))
     return move == transpose;
 }
 
+/* Delta cost for swapping positions i and j (exchange or transpose).
+   Only pairs involving position i or j change.
+    Used also when move is transpose, since the delta is the same as for exchange of adjacent elements.
+*/
+long long int deltaExchange(long int *s, int i, int j)
+{
+    long int a = s[i], b = s[j];
+    long long int delta = CostMat[b][a] - CostMat[a][b];
+    int k;
+
+    for (k = 0; k < i; k++)
+        delta += CostMat[s[k]][b] - CostMat[s[k]][a];
+    for (k = i + 1; k < j; k++)
+        delta += (CostMat[b][s[k]] - CostMat[a][s[k]]) + (CostMat[s[k]][a] - CostMat[s[k]][b]);
+    for (k = j + 1; k < PSize; k++)
+        delta += CostMat[a][s[k]] - CostMat[b][s[k]];
+
+    return delta;
+}
+
+/* Delta cost for moving element at position i to position j (insert).
+   Only the relationships between the moved element and the elements it
+   skips over change: they flip from CostMat[a][s[k]] to CostMat[s[k]][a]
+   or vice versa. */
+long long int deltaInsert(long int *s, int i, int j)
+{
+    long int a = s[i];
+    long long int delta = 0;
+    int k;
+
+    if (i < j)
+    {
+        for (k = i + 1; k <= j; k++)
+            delta += CostMat[s[k]][a] - CostMat[a][s[k]];
+    }
+    else
+    {
+        for (k = j; k < i; k++)
+            delta += CostMat[a][s[k]] - CostMat[s[k]][a];
+    }
+
+    return delta;
+}
+
+/* Dispatch to the correct delta function based on the move type. */
+long long int computeDelta(long int *s, void (*move)(long int *, int, int), int i, int j)
+{
+    if (move == insert)
+        return deltaInsert(s, i, j);
+    return deltaExchange(s, i, j); // covers both exchange and transpose
+}
+
 long long int computeCost(long int *s)
 {
     int h, k;
@@ -124,8 +176,8 @@ long long int firstImprovement(long int *s, void (*move)(long int *, int, int))
 {
     int i, j;
     int transposeMove = isTransposeMove(move);
-    long long int newCost;
     long long int oldCost = computeCost(s);
+    long long int delta;
 
     for (i = 0; i < PSize; i++)
     {
@@ -137,15 +189,11 @@ long long int firstImprovement(long int *s, void (*move)(long int *, int, int))
 
         for (j = jStart; j < jEnd && j < PSize; j++)
         {
-            move(s, i, j);
-            newCost = computeCost(s);
-            if (newCost > oldCost)
+            delta = computeDelta(s, move, i, j);
+            if (delta > 0)
             {
-                return newCost;
-            }
-            else
-            {
-                move(s, i, j); // undo the change
+                move(s, i, j);
+                return oldCost + delta;
             }
         }
     }
@@ -164,9 +212,9 @@ long long int bestImprovement(long int *s, void (*move)(long int *, int, int))
     int i, j;
     int transposeMove = isTransposeMove(move);
     int bestI = -1, bestJ = -1;
-    long long int newCost, bestCost;
+    long long int oldCost = computeCost(s);
+    long long int delta, bestDelta = 0;
 
-    bestCost = computeCost(s);
     for (i = 0; i < PSize; i++)
     {
         int jStart = i + 1;
@@ -177,24 +225,20 @@ long long int bestImprovement(long int *s, void (*move)(long int *, int, int))
 
         for (j = jStart; j < jEnd && j < PSize; j++)
         {
-            move(s, i, j);
-            newCost = computeCost(s);
-            if (newCost > bestCost)
+            delta = computeDelta(s, move, i, j);
+            if (delta > bestDelta)
             {
-                bestCost = newCost;
+                bestDelta = delta;
                 bestI = i;
                 bestJ = j;
             }
-            move(s, i, j); // undo the change
         }
     }
 
     if (bestI >= 0)
-    {
         move(s, bestI, bestJ);
-    }
 
-    return bestCost;
+    return oldCost + bestDelta;
 }
 
 /*
