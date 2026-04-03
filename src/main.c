@@ -30,6 +30,7 @@
 #include "optimization.h"
 
 char *FileName;
+char *instanceName;  /* bare instance name, without path */
 char *pivotingRule; //--first or --best
 char *neighborhoodType; //--exchange, --insert, --transpose,
 char *initialSolutionType; //--random, --chenery
@@ -87,6 +88,7 @@ void readOpts(int argc, char **argv) {
   if (lastSlash != NULL && *(lastSlash + 1) != '\0') {
     inputInstanceName = lastSlash + 1;
   }
+  instanceName = (char *)inputInstanceName;
 
   /* retrieve bestKnown from best_known/best_known.txt*/
   FILE *f = fopen("best_known/best_known.txt", "r");
@@ -216,11 +218,36 @@ int main (int argc, char **argv)
   printf("Time elapsed since we started the timer: %g\n\n", elapsed_time(VIRTUAL));
 
   /* Calculate relative percentage deviation related to bestKnown */
+  double rpd = 0.0;
   if (bestKnown > 0) {
-    double rpd = 100.0 * (bestKnown - cost) / bestKnown;
+    rpd = 100.0 * (bestKnown - cost) / bestKnown;
     printf("Relative percentage deviation from best known solution: %.2f%%\n", rpd);
   } else {
     printf("Best known solution not available.\n");
+  }
+
+  /* Append results to results.dat (write header if file is new) */
+  {
+    FILE *dat;
+    int writeHeader = 0;
+    dat = fopen("results.dat", "r");
+    if (dat == NULL)
+      writeHeader = 1;
+    else
+      fclose(dat);
+
+    dat = fopen("results.dat", "a");
+    if (dat != NULL) {
+      if (writeHeader)
+        fprintf(dat, "instance pivoting neighborhood initial cost rpd time\n");
+      fprintf(dat, "%s %s %s %s %lld %.4f %g\n",
+              instanceName,
+              pivotingRule + 2,      /* skip leading "--" */
+              neighborhoodType + 2,
+              initialSolutionType + 2,
+              cost, rpd, elapsed_time(VIRTUAL));
+      fclose(dat);
+    }
   }
 
   return 0;
