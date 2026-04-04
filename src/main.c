@@ -157,7 +157,6 @@ int main (int argc, char **argv)
   /* starts time measurement */
   start_timers();
 
-  /* A solution is just a vector of int with the same size as the instance */
   currentSolution = (long int *)malloc(PSize * sizeof(long int));
 
   int isVND = (strcmp(pivotingRule, "--vnd") == 0);
@@ -284,8 +283,6 @@ int main (int argc, char **argv)
     }
   }
 
-  /* Append cost to a per-algorithm file (e.g. lop-first-transpose-random.dat).
-     One cost value per line, used directly by the R analysis script. */
   {
     char algFileName[256];
     FILE *algFile;

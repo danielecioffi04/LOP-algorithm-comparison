@@ -36,7 +36,6 @@
 
 long int **CostMat;
 
-// Check if the move function is transpose, which allows us to optimize the inner loop of the local search
 static int isTransposeMove(void (*move)(long int *, int, int))
 {
     return move == transpose;
