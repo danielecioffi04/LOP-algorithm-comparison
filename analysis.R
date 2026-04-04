@@ -1,7 +1,7 @@
 # Exercise 1.1 — Statistical Analysis
 
 # Read best known solution values (one per line, same order as instances)
-best.known <- read.table("output/best-known.dat")$V1
+best.known <- read.table("output/best-known.txt")$V1
 
 # Helper: load costs for one algorithm and compute RPD
 load.rpd <- function(filename) {
@@ -9,19 +9,21 @@ load.rpd <- function(filename) {
   100 * (best.known - cost) / best.known
 }
 
-# Load RPD for all 12 algorithm combinations
-fi.tr.rand  <- load.rpd("output/lop-first-transpose-random.dat")
-fi.tr.cw    <- load.rpd("output/lop-first-transpose-chenery.dat")
-fi.ex.rand  <- load.rpd("output/lop-first-exchange-random.dat")
-fi.ex.cw    <- load.rpd("output/lop-first-exchange-chenery.dat")
-fi.ins.rand <- load.rpd("output/lop-first-insert-random.dat")
-fi.ins.cw   <- load.rpd("output/lop-first-insert-chenery.dat")
-be.tr.rand  <- load.rpd("output/lop-best-transpose-random.dat")
-be.tr.cw    <- load.rpd("output/lop-best-transpose-chenery.dat")
-be.ex.rand  <- load.rpd("output/lop-best-exchange-random.dat")
-be.ex.cw    <- load.rpd("output/lop-best-exchange-chenery.dat")
-be.ins.rand <- load.rpd("output/lop-best-insert-random.dat")
-be.ins.cw   <- load.rpd("output/lop-best-insert-chenery.dat")
+# Load RPD for all 12 iterative improvement combinations + 2 VND algorithms
+fi.tr.rand  <- load.rpd("output/lop-first-transpose-random.txt")
+fi.tr.cw    <- load.rpd("output/lop-first-transpose-chenery.txt")
+fi.ex.rand  <- load.rpd("output/lop-first-exchange-random.txt")
+fi.ex.cw    <- load.rpd("output/lop-first-exchange-chenery.txt")
+fi.ins.rand <- load.rpd("output/lop-first-insert-random.txt")
+fi.ins.cw   <- load.rpd("output/lop-first-insert-chenery.txt")
+be.tr.rand  <- load.rpd("output/lop-best-transpose-random.txt")
+be.tr.cw    <- load.rpd("output/lop-best-transpose-chenery.txt")
+be.ex.rand  <- load.rpd("output/lop-best-exchange-random.txt")
+be.ex.cw    <- load.rpd("output/lop-best-exchange-chenery.txt")
+be.ins.rand <- load.rpd("output/lop-best-insert-random.txt")
+be.ins.cw   <- load.rpd("output/lop-best-insert-chenery.txt")
+vnd.tei.cw  <- load.rpd("output/lop-vnd-tei-chenery.txt")
+vnd.tie.cw  <- load.rpd("output/lop-vnd-tie-chenery.txt")
 
 algorithms <- list(
   "first_transpose_random"  = fi.tr.rand,
@@ -35,13 +37,15 @@ algorithms <- list(
   "best_exchange_random"    = be.ex.rand,
   "best_exchange_chenery"   = be.ex.cw,
   "best_insert_random"      = be.ins.rand,
-  "best_insert_chenery"     = be.ins.cw
+  "best_insert_chenery"     = be.ins.cw,
+  "vnd_tei_chenery"         = vnd.tei.cw,
+  "vnd_tie_chenery"         = vnd.tie.cw
 )
 
 # ── Summary statistics ─────────────────────────────────────────────────────────
 
-# Read total times from results.dat
-data <- read.table("output/results.dat", header = TRUE)
+# Read total times from results.txt
+data <- read.table("output/results.txt", header = TRUE)
 data$algorithm <- paste(data$pivoting, data$neighborhood, data$initial, sep = "_")
 
 cat("=== Average RPD and Total Time per Algorithm ===\n\n")

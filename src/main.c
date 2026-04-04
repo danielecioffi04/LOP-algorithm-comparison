@@ -67,18 +67,30 @@ void readOpts(int argc, char **argv) {
         initialSolutionType = optarg;
         break;
       default:
-        printf("Usage: %s -i <instance_file> -p <pivoting_rule> -n <neighborhood_type> -s <initial_solution_type>\n", argv[0]);
-        printf("  pivoting_rule: --first or --best\n");
-        printf("  neighborhood_type: --exchange, --insert, --transpose\n");
+        printf("Usage: %s -i <instance_file> -p <pivoting_rule> [-n <neighborhood_type>] -s <initial_solution_type>\n", argv[0]);
+        printf("  pivoting_rule: --first, --best, --vnd-tei, --vnd-tie\n");
+        printf("  neighborhood_type: --exchange, --insert, --transpose (not needed for VND)\n");
         printf("  initial_solution_type: --random, --chenery\n");
         exit(1);
     }
   }
 
-  if (FileName == NULL || pivotingRule == NULL || neighborhoodType == NULL || initialSolutionType == NULL) {
-    printf("Usage: %s -i <instance_file> -p <pivoting_rule> -n <neighborhood_type> -s <initial_solution_type>\n", argv[0]);
-    printf("  pivoting_rule: --first or --best\n");
-    printf("  neighborhood_type: --exchange, --insert, --transpose\n");
+  /* VND: internally split --vnd-tei/--vnd-tie into pivoting=vnd and neighborhood=tei/tie */
+  if (pivotingRule != NULL && strcmp(pivotingRule, "--vnd-tei") == 0) {
+    pivotingRule = "--vnd";
+    neighborhoodType = "--tei";
+  } else if (pivotingRule != NULL && strcmp(pivotingRule, "--vnd-tie") == 0) {
+    pivotingRule = "--vnd";
+    neighborhoodType = "--tie";
+  }
+
+  int isVND = (pivotingRule != NULL && strcmp(pivotingRule, "--vnd") == 0);
+
+  if (FileName == NULL || pivotingRule == NULL || initialSolutionType == NULL ||
+      (!isVND && neighborhoodType == NULL)) {
+    printf("Usage: %s -i <instance_file> -p <pivoting_rule> [-n <neighborhood_type>] -s <initial_solution_type>\n", argv[0]);
+    printf("  pivoting_rule: --first, --best, --vnd-tei, --vnd-tie\n");
+    printf("  neighborhood_type: --exchange, --insert, --transpose (not needed for VND)\n");
     printf("  initial_solution_type: --random, --chenery\n");
     exit(1);
   }
@@ -148,14 +160,18 @@ int main (int argc, char **argv)
   /* A solution is just a vector of int with the same size as the instance */
   currentSolution = (long int *)malloc(PSize * sizeof(long int));
 
-  /* Assign function pointers based on user input */
-  if (strcmp(pivotingRule, "--first") == 0) {
-    pivotingFunction = firstImprovement;
-  } else if (strcmp(pivotingRule, "--best") == 0) {
-    pivotingFunction = bestImprovement;
-  } else {
-    printf("Invalid pivoting rule provided. Exiting.\n");
-    exit(1);
+  int isVND = (strcmp(pivotingRule, "--vnd") == 0);
+
+  /* Assign pivoting function (not used for VND) */
+  if (!isVND) {
+    if (strcmp(pivotingRule, "--first") == 0) {
+      pivotingFunction = firstImprovement;
+    } else if (strcmp(pivotingRule, "--best") == 0) {
+      pivotingFunction = bestImprovement;
+    } else {
+      printf("Invalid pivoting rule provided. Exiting.\n");
+      exit(1);
+    }
   }
 
   /* Assign initial solution function */
@@ -170,19 +186,21 @@ int main (int argc, char **argv)
     exit(1);
   }
 
-  /* Assign neighborhood move function */
-  if (strcmp(neighborhoodType, "--exchange") == 0) {
-    neighborhoodMoveFunction = exchange;
-  }
-  else if (strcmp(neighborhoodType, "--insert") == 0) {
-    neighborhoodMoveFunction = insert;
-  }
-  else if (strcmp(neighborhoodType, "--transpose") == 0) {
-    neighborhoodMoveFunction = transpose;
-  }
-  else {
-    printf("Invalid neighborhood type provided. Exiting.\n");
-    exit(1);
+  /* Assign neighborhood move function (not used for VND) */
+  if (!isVND) {
+    if (strcmp(neighborhoodType, "--exchange") == 0) {
+      neighborhoodMoveFunction = exchange;
+    }
+    else if (strcmp(neighborhoodType, "--insert") == 0) {
+      neighborhoodMoveFunction = insert;
+    }
+    else if (strcmp(neighborhoodType, "--transpose") == 0) {
+      neighborhoodMoveFunction = transpose;
+    }
+    else {
+      printf("Invalid neighborhood type provided. Exiting.\n");
+      exit(1);
+    }
   }
 
   /* Generate initial solution */
@@ -194,18 +212,34 @@ int main (int argc, char **argv)
   initialCost = cost;
   printf("Cost of initial solution: %lld\n", cost);
 
-  /* Optimize with local search until no improving move exists */
+  /* Optimize */
   iterations = 0;
-  while (1) {
-    candidateCost = pivotingFunction(currentSolution, neighborhoodMoveFunction);
-    if (candidateCost <= cost)
-      break;
-    cost = candidateCost;
-    iterations++;
+  if (isVND) {
+    /* VND: cycle through neighborhoods, resetting to first on any improvement */
+    void (*vndMoves[3])(long int *, int, int);
+    vndMoves[0] = transpose;
+    if (strcmp(neighborhoodType, "--tei") == 0) {
+      vndMoves[1] = exchange;
+      vndMoves[2] = insert;
+    } else { /* --tie */
+      vndMoves[1] = insert;
+      vndMoves[2] = exchange;
+    }
+    cost = vnd(currentSolution, vndMoves);
+  } else {
+    /* Standard iterative improvement */
+    while (1) {
+      candidateCost = pivotingFunction(currentSolution, neighborhoodMoveFunction);
+      if (candidateCost <= cost)
+        break;
+      cost = candidateCost;
+      iterations++;
+    }
   }
 
   printf("Cost after optimization: %lld\n", cost);
-  printf("Optimization iterations: %d\n", iterations);
+  if (!isVND)
+    printf("Optimization iterations: %d\n", iterations);
 
   /* Compare the two solutions */
   if (cost == initialCost)
@@ -230,13 +264,13 @@ int main (int argc, char **argv)
   {
     FILE *dat;
     int writeHeader = 0;
-    dat = fopen("output/results.dat", "r");
+    dat = fopen("output/results.txt", "r");
     if (dat == NULL)
       writeHeader = 1;
     else
       fclose(dat);
 
-    dat = fopen("output/results.dat", "a");
+    dat = fopen("output/results.txt", "a");
     if (dat != NULL) {
       if (writeHeader)
         fprintf(dat, "instance pivoting neighborhood initial cost rpd time\n");
@@ -255,7 +289,7 @@ int main (int argc, char **argv)
   {
     char algFileName[256];
     FILE *algFile;
-    snprintf(algFileName, sizeof(algFileName), "output/lop-%s-%s-%s.dat",
+    snprintf(algFileName, sizeof(algFileName), "output/lop-%s-%s-%s.txt",
              pivotingRule + 2,
              neighborhoodType + 2,
              initialSolutionType + 2);
@@ -268,3 +302,4 @@ int main (int argc, char **argv)
 
   return 0;
 }
+

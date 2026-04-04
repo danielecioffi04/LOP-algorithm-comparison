@@ -241,6 +241,36 @@ long long int bestImprovement(long int *s, void (*move)(long int *, int, int))
     return oldCost + bestDelta;
 }
 
+/* Variable Neighbourhood Descent
+    s: the current solution to be improved
+    moves: an array of pointers to move functions representing the different neighborhoods to explore
+    numMoves: the number of move functions in the moves array
+    
+    Returns the cost of the improved solution after exploring all neighborhoods.
+*/
+long long int vnd(long int *s, void (*moves[])(long int *, int, int))
+{
+    long long int cost = computeCost(s);
+    long long int newCost;
+    int i = 0;
+
+    while (i < 3)
+    {
+        newCost = firstImprovement(s, moves[i]);
+        if (newCost > cost)
+        {
+            cost = newCost;
+            i = 0;  /* improvement found: restart from the first neighborhood */
+        }
+        else
+        {
+            i++;    /* no improvement: move to the next neighborhood */
+        }
+    }
+
+    return cost;
+}
+
 /*
     Performs a transpose move on the solution s by swapping the element at index i with the element at index i+1.
     The placeholder parameter is not used in this move.

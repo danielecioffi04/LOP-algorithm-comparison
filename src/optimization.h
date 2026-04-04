@@ -31,5 +31,6 @@ long long int bestImprovement(long int *s, void (*move)(long int *, int, int));
 void exchange(long int *s, int i, int j);
 void insert(long int *s, int i, int j);
 void transpose(long int *s, int i, int placeholder);
+long long int vnd(long int *s, void (*moves[])(long int *, int, int));
 
 #endif
