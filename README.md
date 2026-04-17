@@ -48,7 +48,7 @@ VND always uses First Improvement internally.
 bash run_all.sh
 ```
 
-This runs all 14 configurations (12 iterative improvement + 2 VND) across all 78 instances and writes results to `output/`. Runtime of roughly 20–30 minutes.
+This runs all 14 configurations (12 iterative improvement + 2 VND) across all 78 instances and writes results to `output/`. Runtime of 20–30 minutes.
 
 ## Output
 
