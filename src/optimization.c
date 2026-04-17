@@ -51,12 +51,10 @@ long long int deltaExchange(long int *s, int i, int j)
     long long int delta = CostMat[b][a] - CostMat[a][b];
     int k;
 
-    for (k = 0; k < i; k++)
-        delta += CostMat[s[k]][b] - CostMat[s[k]][a];
+    /* For k < i and k > j the two affected pairs cancel to zero, so only
+       the elements strictly between i and j contribute to the delta. */
     for (k = i + 1; k < j; k++)
         delta += (CostMat[b][s[k]] - CostMat[a][s[k]]) + (CostMat[s[k]][a] - CostMat[s[k]][b]);
-    for (k = j + 1; k < PSize; k++)
-        delta += CostMat[a][s[k]] - CostMat[b][s[k]];
 
     return delta;
 }
@@ -134,8 +132,10 @@ void cheneryWatanabe(long int *s)
 
     for (k = 0; k < PSize; k++)
     {
-        /* At step k, pick the unplaced element i with the highest attractiveness:
-           sum of CostMat[i][j] for all remaining unplaced j != i */
+        /* At step k, pick the unplaced element i with the highest CW score.
+           The CW score is fixed: b(i) = sum over ALL j!=i of (CostMat[i][j] - CostMat[j][i]).
+           Using only unplaced j would change scores as elements are placed, giving a
+           non-standard ordering. */
         long long int bestScore = LLONG_MIN;
         int bestIndex = -1;
 
@@ -146,8 +146,8 @@ void cheneryWatanabe(long int *s)
                 long long int score = 0;
                 for (j = 0; j < PSize; j++)
                 {
-                    if (!used[j] && j != i)
-                        score += CostMat[i][j];
+                    if (j != i)
+                        score += CostMat[i][j] - CostMat[j][i];
                 }
                 if (score > bestScore)
                 {
@@ -175,19 +175,23 @@ long long int firstImprovement(long int *s, void (*move)(long int *, int, int))
 {
     int i, j;
     int transposeMove = isTransposeMove(move);
+    int insertMove = (move == insert);
     long long int oldCost = computeCost(s);
     long long int delta;
 
     for (i = 0; i < PSize; i++)
     {
-        int jStart = i + 1;
-        int jEnd = transposeMove ? (i + 2) : PSize; // For transpose, only consider the adjacent element
+        /* insert(i,j) with j<i moves an element left — a different move from insert(j,i).
+           Exchange is symmetric so j>i suffices there; transpose is always adjacent. */
+        int jStart = insertMove ? 0 : i + 1;
+        int jEnd = transposeMove ? (i + 2) : PSize;
 
         if (jStart >= PSize)
             continue;
 
         for (j = jStart; j < jEnd && j < PSize; j++)
         {
+            if (j == i) continue;
             delta = computeDelta(s, move, i, j);
             if (delta > 0)
             {
@@ -210,13 +214,14 @@ long long int bestImprovement(long int *s, void (*move)(long int *, int, int))
 {
     int i, j;
     int transposeMove = isTransposeMove(move);
+    int insertMove = (move == insert);
     int bestI = -1, bestJ = -1;
     long long int oldCost = computeCost(s);
     long long int delta, bestDelta = 0;
 
     for (i = 0; i < PSize; i++)
     {
-        int jStart = i + 1;
+        int jStart = insertMove ? 0 : i + 1;
         int jEnd = transposeMove ? (i + 2) : PSize;
 
         if (jStart >= PSize)
@@ -224,6 +229,7 @@ long long int bestImprovement(long int *s, void (*move)(long int *, int, int))
 
         for (j = jStart; j < jEnd && j < PSize; j++)
         {
+            if (j == i) continue;
             delta = computeDelta(s, move, i, j);
             if (delta > bestDelta)
             {

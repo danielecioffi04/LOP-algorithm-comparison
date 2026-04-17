@@ -75,7 +75,7 @@ void readOpts(int argc, char **argv) {
     }
   }
 
-  /* VND: internally split --vnd-tei/--vnd-tie into pivoting=vnd and neighborhood=tei/tie */
+  /* VND: split --vnd-tei/--vnd-tie into pivoting=vnd and neighborhood=tei/tie */
   if (pivotingRule != NULL && strcmp(pivotingRule, "--vnd-tei") == 0) {
     pivotingRule = "--vnd";
     neighborhoodType = "--tei";
@@ -251,10 +251,10 @@ int main (int argc, char **argv)
   printf("Time elapsed since we started the timer: %g\n\n", elapsed_time(VIRTUAL));
 
   /* Calculate relative percentage deviation related to bestKnown */
-  double rpd = 0.0;
+  double apd = 0.0;
   if (bestKnown > 0) {
-    rpd = 100.0 * (bestKnown - cost) / bestKnown;
-    printf("Relative percentage deviation from best known solution: %.2f%%\n", rpd);
+    apd = 100.0 * (bestKnown - cost) / bestKnown;
+    printf("Relative percentage deviation from best known solution: %.2f%%\n", apd);
   } else {
     printf("Best known solution not available.\n");
   }
@@ -272,13 +272,13 @@ int main (int argc, char **argv)
     dat = fopen("output/results.txt", "a");
     if (dat != NULL) {
       if (writeHeader)
-        fprintf(dat, "instance pivoting neighborhood initial cost rpd time\n");
+        fprintf(dat, "instance pivoting neighborhood initial cost apd time\n");
       fprintf(dat, "%s %s %s %s %lld %.4f %g\n",
               instanceName,
               pivotingRule + 2,      /* skip leading "--" */
               neighborhoodType + 2,
               initialSolutionType + 2,
-              cost, rpd, elapsed_time(VIRTUAL));
+              cost, apd, elapsed_time(VIRTUAL));
       fclose(dat);
     }
   }

@@ -1,13 +1,7 @@
 #!/bin/bash
 
 mkdir -p output
-rm -f output/results.txt output/lop-*.txt output/best-known.txt
-
-# Generate best-known.txt in the same instance order (alphabetical)
-for instance in instances/*; do
-  name=$(basename "$instance")
-  grep "^$name " best_known/best_known.txt | awk '{print $2}' >> output/best-known.txt
-done
+rm -f output/results.txt output/lop-*.txt
 
 # Run all 12 iterative improvement combinations on every instance
 for instance in instances/*; do

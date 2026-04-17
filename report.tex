@@ -1,0 +1,420 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage{float}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!70!black,
+  urlcolor=blue
+}
+
+\title{\textbf{Local Search Algorithms for the Linear Ordering Problem:\\
+An Empirical Comparison of Neighborhoods, Pivoting Rules, and Initialization Strategies}}
+\author{Daniele Cioffi\\
+\small Heuristic Optimization --- Exercise 1}
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+%─────────────────────────────────────────────────────────────────────────────
+\begin{abstract}
+We implement and compare 14 local search configurations for the
+\emph{Linear Ordering Problem} (LOP), combining three neighborhood
+structures (Transpose, Exchange, Insert), two pivoting rules
+(First Improvement, Best Improvement), two initialization strategies
+(Random, Chenery--Watanabe), and two Variable Neighborhood Descent
+(VND) variants.  Experiments are conducted on the full XLOLIB benchmark
+of 78 instances (sizes $n=150$ and $n=250$).  Results are evaluated via
+the Relative Percentage Deviation (apd) from the best-known objective
+value.  Statistical significance is assessed with paired $t$-tests and
+Wilcoxon signed-rank tests.  The Insert neighborhood yields dramatically
+lower apd (mean~$\approx 5\%$) compared to Transpose and Exchange
+(mean~$>15\%$), a difference that is statistically significant across
+all comparisons.  The Chenery--Watanabe initialization is significantly
+beneficial for the weaker neighborhoods but confers no clear advantage
+for Insert.  Both VND variants match the quality of
+\textsc{First}+\textsc{Transpose}+\textsc{Chenery} but never surpass
+Insert-based search.
+\end{abstract}
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+
+The Linear Ordering Problem (LOP) is a well-known combinatorial
+optimization problem with applications in economic input--output
+analysis, triangulation of matrices, archaeological sequencing, and
+machine scheduling.
+It is NP-hard in the general case, making exact methods impractical for
+large instances, and it has served as a canonical benchmark for
+evaluating local search and metaheuristic techniques.
+
+This report investigates how three design choices interact in
+deterministic local search for the LOP:
+\begin{enumerate}
+    \item \textbf{Neighborhood structure} --- how the set of neighbors of
+          a solution is defined;
+    \item \textbf{Pivoting rule} --- whether to accept the \emph{first}
+          improving neighbor or to scan the full neighborhood and accept
+          the \emph{best};
+    \item \textbf{Initial solution} --- whether to start from a random
+          permutation or from the Chenery--Watanabe (CW) greedy
+          construction heuristic.
+\end{enumerate}
+In addition, two Variable Neighborhood Descent (VND) strategies that
+cycle through all three neighborhoods are evaluated.
+
+All algorithms are implemented in C and run on the XLOLIB benchmark set.
+The remainder of this report is organized as follows.
+Section~\ref{sec:problem} formalizes the LOP.
+Section~\ref{sec:methods} describes the implementation.
+Section~\ref{sec:results} presents experimental results and statistical
+analysis.
+Section~\ref{sec:conclusion} concludes.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Problem Description}
+\label{sec:problem}
+
+Given an $n\times n$ matrix $C=(c_{ij})$ of non-negative real weights,
+the LOP asks for a permutation $\pi$ of $\{1,\ldots,n\}$ that maximizes
+
+\begin{equation}
+  f(\pi) \;=\; \sum_{i=1}^{n}\sum_{j=i+1}^{n} c_{\pi_i,\pi_j}.
+  \label{eq:lop}
+\end{equation}
+
+That is, we seek an ordering of the rows (and columns) of $C$ such that
+the sum of entries in the upper triangle of the permuted matrix is
+maximized.  Equivalently, the LOP corresponds to finding an acyclic
+tournament that maximizes the weight of forward arcs.
+
+\paragraph{XLOLIB benchmark.}
+The experiments use the XLOLIB instance set, which comprises instances
+derived from real-world economic input--output tables.  The full benchmark comprises
+78~instances: 39 with $n=150$ and 39 with $n=250$.  Best-known
+objective values are provided for each instance and used to compute the
+Relative Percentage Deviation (apd):
+
+\begin{equation}
+  \mathrm{apd} \;=\; 100 \times \frac{f^*-f(\hat\pi)}{f^*},
+  \label{eq:apd}
+\end{equation}
+
+where $f^*$ is the best-known value and $f(\hat\pi)$ is the value found
+by the algorithm.  A lower apd indicates better solution quality.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Materials and Methods}
+\label{sec:methods}
+
+\subsection{Implementation}
+
+The solver is implemented in C (standard C99) and organized into five
+modules: argument parsing and main loop (\texttt{main.c}), instance
+loading (\texttt{instance.c}), all search algorithms
+(\texttt{optimization.c}), a custom linear congruential random number
+generator (\texttt{utilities.c}), and wall-clock timing
+(\texttt{timer.c}).
+
+The RNG seed is set deterministically as the sum of all entries in the
+cost matrix, ensuring reproducibility without a fixed external seed.
+
+\subsection{Neighborhood Structures}
+
+Three standard LOP neighborhoods are implemented.
+
+\paragraph{Transpose ($\mathcal{N}_T$).}
+Swap two \emph{adjacent} elements at positions $i$ and $i+1$.  The
+neighborhood size is $n-1$.  The incremental cost change for transposing
+elements $\pi_i$ and $\pi_{i+1}$ is
+$\Delta = c_{\pi_{i+1},\pi_i} - c_{\pi_i,\pi_{i+1}}$,
+computed in $O(1)$.
+
+\paragraph{Exchange ($\mathcal{N}_E$).}
+Swap any two elements at positions $i$ and $j$ ($i < j$).  The
+neighborhood size is $\binom{n}{2}$.  The incremental cost change
+(\texttt{deltaExchange}) is computed in $O(n)$.
+
+\paragraph{Insert ($\mathcal{N}_I$).}
+Remove the element at position $i$ and reinsert it at position $j
+\neq i$.  The neighborhood size is $n(n-1)$.  The incremental cost
+change (\texttt{deltaInsert}) is computed in $O(n)$.
+
+\subsection{Pivoting Rules}
+
+\paragraph{First Improvement.}
+Iterate over neighbors in a fixed order; accept the first move with
+$\Delta > 0$ and restart the scan from the beginning.  Terminate when
+no improving neighbor is found.
+
+\paragraph{Best Improvement.}
+Scan the entire neighborhood; accept the move with the largest positive
+$\Delta$.  Terminate when no improving neighbor exists.
+
+Both pivoting rules use function pointers so that any neighborhood can
+be passed as a callback without code duplication.
+
+\subsection{Initial Solutions}
+
+\paragraph{Random.}
+Generate a uniformly random permutation of $\{1,\ldots,n\}$ using the
+Fisher--Yates shuffle and the custom LCG.
+
+\paragraph{Chenery--Watanabe (CW).}
+Compute the row sum $a_i = \sum_{j=1}^n c_{ij}$ for each element and
+sort elements in decreasing order of $a_i$.  The rationale is that an
+element with a large row sum contributes more when placed early in the
+permutation, so ranking by $a_i$ yields a greedy approximation to the
+optimum.
+
+\subsection{Variable Neighborhood Descent}
+
+Two VND configurations are tested, both initialized with the
+Chenery--Watanabe solution and using First Improvement as the internal
+pivoting rule:
+
+\begin{itemize}
+  \item \textbf{VND-TEI}: neighborhoods cycled in order
+        $\mathcal{N}_T \to \mathcal{N}_E \to \mathcal{N}_I$.
+  \item \textbf{VND-TIE}: neighborhoods cycled in order
+        $\mathcal{N}_T \to \mathcal{N}_I \to \mathcal{N}_E$.
+\end{itemize}
+
+The VND procedure optimizes the current solution with respect to the
+first neighborhood; upon finding a local optimum, it moves to the next
+neighborhood.  If an improvement is found in any non-first neighborhood,
+control returns to $\mathcal{N}_T$.  The procedure terminates when the
+solution is a local optimum for all three neighborhoods simultaneously.
+
+\subsection{Experimental Setup}
+
+All 14 configurations are run on each of the 78 XLOLIB instances.
+Computation time is measured as wall-clock time per run using
+\texttt{gettimeofday}.  Statistical comparisons use paired tests (each
+algorithm pair is compared instance-by-instance) at significance level
+$\alpha = 0.05$: a two-sided paired $t$-test and a Wilcoxon signed-rank
+test (with normal approximation).  Both tests agree in all but a handful
+of boundary cases, and the Wilcoxon result is reported as primary since
+apd values may not be normally distributed.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Results}
+\label{sec:results}
+
+\subsection{Summary Statistics}
+
+Table~\ref{tab:summary} reports, for each of the 14 configurations, the
+mean apd, the standard deviation of apd, and the total wall-clock time
+summed over all 78 instances.  A lower mean apd means better solution
+quality.
+
+\begin{table}[H]
+\centering
+\caption{Summary of results over 78 XLOLIB instances.
+$\bar{\delta}$: mean apd (\%); $\sigma_\delta$: standard deviation of
+apd (\%); Time: total time (s) across all instances.}
+\label{tab:summary}
+\setlength{\tabcolsep}{7pt}
+\begin{tabular}{llll r r r}
+\toprule
+\textbf{Pivoting} & \textbf{Neighborhood} & \textbf{Init}
+  & $\bar{\delta}$ & $\sigma_\delta$ & \textbf{Time (s)} \\
+\midrule
+First  & Transpose & Random  & 34.71 & 5.42  & 0.01 \\
+First  & Transpose & Chenery & 16.65 & 2.48  & 0.26 \\
+First  & Exchange  & Random  & 34.76 & 5.37  & 0.01 \\
+First  & Exchange  & Chenery & 16.76 & 2.49  & 0.26 \\
+First  & Insert    & Random  &  5.12 & 0.97  & 243.88 \\
+First  & Insert    & Chenery &  5.64 & 1.16  & 144.69 \\
+\midrule
+Best   & Transpose & Random  & 33.87 & 5.26  & 0.01 \\
+Best   & Transpose & Chenery & 15.72 & 2.55  & 0.26 \\
+Best   & Exchange  & Random  & 29.06 & 4.50  & 2.60 \\
+Best   & Exchange  & Chenery & 14.54 & 2.53  & 1.84 \\
+Best   & Insert    & Random  &  5.02 & 1.00  & 26.32 \\
+Best   & Insert    & Chenery &  5.85 & 1.16  & 23.61 \\
+\midrule
+VND-TEI & ---      & Chenery & 16.64 & 2.47  & 0.26 \\
+VND-TIE & ---      & Chenery & 16.65 & 2.48  & 0.26 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The dominant factor is clearly the \textbf{neighborhood structure}.
+Insert-based algorithms achieve mean apd below 6\%, while Transpose and
+Exchange algorithms range from 14\% to 35\%.  Within each neighborhood,
+the Chenery--Watanabe initialization consistently reduces apd, with the
+most pronounced benefit observed for Transpose and Exchange (reductions
+of roughly 18--20 percentage points).  For Insert, the initialization
+advantage is smaller and partly reversed (random initialization yields
+slightly better results than CW for the First Improvement variant).
+
+Best Improvement does not offer consistent gains over First Improvement:
+for Insert the differences are marginal, while for Exchange the
+Best Improvement variant achieves a modest improvement ($\approx 2\%$
+mean apd reduction per pivoting/init combination) at a substantially
+higher computational cost.
+
+Both VND variants perform identically to
+\textsc{First}+\textsc{Transpose}+\textsc{Chenery} in terms of mean
+apd ($\approx 16.6\%$), despite internally exploring Exchange and Insert
+neighbors as well.  This indicates that the VND procedure terminates
+early at local optima that Insert alone would escape.
+
+\subsection{Statistical Tests}
+
+All 91 pairwise comparisons were performed.
+Table~\ref{tab:pairwise} summarizes the most informative comparisons.
+Full results are available in the supplementary analysis script.
+
+\begin{table}[H]
+\centering
+\caption{Selected pairwise Wilcoxon signed-rank tests ($\alpha=0.05$).
+$p_W$: Wilcoxon $p$-value; Sig.: statistically significant difference.}
+\label{tab:pairwise}
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{l l c c}
+\toprule
+\textbf{Algorithm A} & \textbf{Algorithm B} & $p_W$ & \textbf{Sig.} \\
+\midrule
+\multicolumn{4}{l}{\textit{Effect of neighborhood (First Improvement, Random init)}} \\
+First+Transpose+Rand  & First+Exchange+Rand   & $0.0003$ & Yes \\
+First+Transpose+Rand  & First+Insert+Rand     & $<0.0001$ & Yes \\
+First+Exchange+Rand   & First+Insert+Rand     & $<0.0001$ & Yes \\
+\midrule
+\multicolumn{4}{l}{\textit{Effect of initialization (First Improvement)}} \\
+First+Transpose+Rand  & First+Transpose+CW    & $<0.0001$ & Yes \\
+First+Exchange+Rand   & First+Exchange+CW     & $<0.0001$ & Yes \\
+First+Insert+Rand     & First+Insert+CW       & $0.0002$  & Yes \\
+\midrule
+\multicolumn{4}{l}{\textit{Effect of pivoting rule (Insert neighborhood)}} \\
+First+Insert+Rand     & Best+Insert+Rand      & $0.6624$ & No \\
+First+Insert+CW       & Best+Insert+CW        & $0.0407$ & Yes \\
+\midrule
+\multicolumn{4}{l}{\textit{Effect of pivoting rule (Exchange neighborhood)}} \\
+First+Exchange+CW     & Best+Exchange+CW      & $<0.0001$ & Yes \\
+\midrule
+\multicolumn{4}{l}{\textit{VND vs.\ single neighborhood}} \\
+First+Transpose+CW    & VND-TEI+CW            & $0.0225$  & Yes \\
+First+Transpose+CW    & VND-TIE+CW            & $0.0360$  & Yes \\
+VND-TEI+CW            & VND-TIE+CW            & $0.4420$  & No  \\
+First+Insert+Rand     & VND-TEI+CW            & $<0.0001$ & Yes \\
+\midrule
+\multicolumn{4}{l}{\textit{Best insert variants vs.\ VND}} \\
+Best+Insert+Rand      & VND-TEI+CW            & $<0.0001$ & Yes \\
+Best+Insert+CW        & VND-TEI+CW            & $<0.0001$ & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Neighborhood effect.}
+All three pairwise comparisons between distinct neighborhoods are
+statistically significant ($p < 0.001$ in all cases).  The Insert
+neighborhood is the clear winner; the difference between Transpose and
+Exchange is smaller but still significant.
+
+\paragraph{Initialization effect.}
+The Chenery--Watanabe initialization provides a statistically significant
+improvement over random initialization for \emph{all} three
+neighborhoods.  The effect is strongest for Transpose and Exchange.
+Counterintuitively, for the Insert neighborhood, the random initialization
+slightly outperforms CW in the First Improvement setting (mean apd 5.12
+vs.\ 5.64), though the difference is statistically significant
+($p_W = 0.0002$).  This is likely because the CW heuristic produces a
+solution concentrated in a particular region of the search space, from
+which Insert search escapes into a different local optimum than the one
+reachable from a diverse random start.
+
+\paragraph{Pivoting rule effect.}
+For the Insert neighborhood with random initialization, First and Best
+Improvement reach solutions of equivalent quality ($p_W = 0.6624$, not
+significant), with First Improvement being roughly $10\times$ faster.
+For Insert with CW initialization and for Exchange, Best Improvement
+achieves slightly but significantly better solutions at a substantial
+time cost.  For Transpose, the improvement from Best over First is
+negligible.
+
+\paragraph{VND effect.}
+Both VND variants significantly outperform
+\textsc{First}+\textsc{Transpose}+\textsc{CW} alone ($p_W < 0.05$),
+confirming that including the additional neighborhoods is beneficial.
+However, VND falls far short of pure Insert-based search (mean apd
+$\approx 16.6\%$ vs.\ $\approx 5\%$, $p_W < 0.0001$).  This suggests
+that the VND neighborhood cycling terminates at local optima with respect
+to all three neighborhoods, yet these solutions are still far from those
+found by dedicated Insert search.  The order of neighborhoods (TEI vs.\
+TIE) has no statistically significant effect ($p_W = 0.4420$).
+
+\subsection{Computational Cost}
+
+Table~\ref{tab:summary} shows that Insert-based algorithms are by far
+the most expensive.  First+Insert+Random requires 244~s total (3.1~s per
+instance on average), versus under 0.3~s for all Transpose and Exchange
+variants.  Best+Insert is about $10\times$ faster than First+Insert (the
+best-improvement scan terminates sooner in practice for this benchmark),
+yet achieves comparable or slightly worse solution quality.  VND requires
+only 0.26~s total, the same as single Transpose/Exchange with CW, because
+it terminates quickly once stuck in a local optimum.
+
+%─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+This study compared 14 local search configurations for the LOP on the
+full XLOLIB benchmark.  The main conclusions are:
+
+\begin{enumerate}
+  \item \textbf{Neighborhood choice dominates.}  The Insert neighborhood
+        yields mean apd around 5\%, while Transpose and Exchange yield
+        15--35\%.  All pairwise differences are statistically significant.
+        The LOP search landscape is significantly more amenable to Insert
+        moves, as confirmed by the experimental results obtained here.
+
+  \item \textbf{Initialization matters for weak neighborhoods.}
+        The Chenery--Watanabe construction heuristic significantly
+        reduces apd for Transpose and Exchange ($\approx 18$~pp
+        improvement).  For Insert, the benefit is marginal and can
+        slightly favor random initialization, suggesting that the
+        large Insert neighborhood is less sensitive to starting point.
+
+  \item \textbf{Pivoting rule has modest impact.}
+        Best Improvement and First Improvement reach essentially the
+        same solution quality for Insert (no significant difference for
+        the random-init variant), while Best Improvement incurs
+        substantially higher computation time.  For Exchange, Best
+        Improvement achieves a small but significant quality gain.
+
+  \item \textbf{VND does not close the gap to Insert search.}
+        Despite incorporating Insert moves, VND converges to solutions
+        of similar quality to single-neighborhood Transpose search with
+        CW initialization ($\approx 16\%$ apd).  This is because VND
+        resets to the first neighborhood upon any improvement, causing
+        it to terminate at a combined local optimum that differs from
+        the pure Insert local optimum.  The neighborhood order (TEI
+        vs.\ TIE) has no significant effect.
+\end{enumerate}
+
+An effective practical configuration for the LOP under a time budget
+is \textbf{First Improvement with the Insert neighborhood and a random
+(or CW) initialization}, achieving the lowest mean apd with reasonable
+computation time.  Future work could explore iterated local search or
+simulated annealing on top of Insert-based local search to further
+improve solution quality beyond pure local optima.
+
+
+\end{document}
